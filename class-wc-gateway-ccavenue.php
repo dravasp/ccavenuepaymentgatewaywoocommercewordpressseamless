@@ -82,11 +82,53 @@ class WC_Gateway_CCAvenue extends WC_Payment_Gateway {
 
     private function get_ccavenue_url($data) {
         // Construct the CCAvenue payment URL
-        return 'https://secure.ccavenue.com/transaction/init';
+        return 'https://secure.ccavenue.com/transaction/init'; // Update with the correct URL
     }
 
     public function check_response() {
-        // Handle the response from CCAvenue
-        // Validate the response and update order status
+        // Check if the request is coming from CCAvenue
+        if (!isset($_POST['order_id']) || !isset($_POST['tracking_id'])) {
+            return; // Invalid response
+        }
+
+        // Sanitize and validate the response data
+        $order_id = sanitize_text_field($_POST['order_id']);
+        $tracking_id = sanitize_text_field($_POST['tracking_id']);
+        $status = sanitize_text_field($_POST['status']);
+        $amount = sanitize_text_field($_POST['amount']);
+        $merchant_id = sanitize_text_field($_POST['merchant_id']);
+        $checksum = sanitize_text_field($_POST['checksum']);
+
+        // Verify the checksum for security
+        $calculated_checksum = $this->generate_checksum($order_id, $tracking_id, $status, $amount);
+        
+        if ($checksum !== $calculated_checksum) {
+            // Invalid checksum
+            return; // Handle error
+        }
+
+        // Get the order
+        $order = wc_get_order($order_id);
+
+        if ($status === 'Success') {
+            // Payment was successful
+            $order->payment_complete($tracking_id);
+            $order->add_order_note(__('Payment received, transaction ID: ' . $tracking_id, 'woocommerce'));
+            // Redirect to thank you page
+            wp_redirect($this->get_return_url($order));
+            exit;
+        } else {
+            // Payment failed
+            $order->update_status('failed', __('Payment failed: ' . $status, 'woocommerce'));
+            // Redirect to failure page
+            wp_redirect($order->get_cancel_order_url());
+            exit;
+        }
+    }
+
+    private function generate_checksum($order_id, $tracking_id, $status, $amount) {
+        // Generate checksum using the working key and other parameters
+        $data = $this->merchant_id . '|' . $order_id . '|' . $tracking_id . '|' . $status . '|' . $amount . '|' . $this->working_key;
+        return hash('sha256', $data); // Example using SHA-256
     }
 }
