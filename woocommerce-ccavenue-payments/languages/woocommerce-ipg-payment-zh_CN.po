@@ -1,0 +1,92 @@
+# Chinese translation for WooCommerce IPG Payment Plugin
+# Copyright (C) 2024 WooCommerce IPG Payment
+# This file is distributed under the same license as the WooCommerce IPG Payment package.
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce IPG Payment 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-15 12:00+0000\n"
+"PO-Revision-Date: 2024-01-15 12:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Chinese\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: includes/class-wc-ipg-payment-gateway.php:45
+msgid "IPG Payment Gateway"
+msgstr "IPG支付网关"
+
+#: includes/class-wc-ipg-payment-gateway.php:67
+msgid "Enable IPG Payment"
+msgstr "启用IPG支付"
+
+#: includes/class-wc-ipg-payment-gateway.php:72
+msgid "Title"
+msgstr "标题"
+
+#: includes/class-wc-ipg-payment-gateway.php:74
+msgid "This controls the title which the user sees during checkout."
+msgstr "这控制用户在结账时看到的标题。"
+
+#: includes/class-wc-ipg-payment-gateway.php:78
+msgid "Description"
+msgstr "描述"
+
+#: includes/class-wc-ipg-payment-gateway.php:80
+msgid "Payment method description that the customer will see on your checkout."
+msgstr "客户将在您的结账页面上看到的支付方式描述。"
+
+#: includes/class-wc-ipg-payment-gateway.php:89
+msgid "Merchant ID"
+msgstr "商户ID"
+
+#: includes/class-wc-ipg-payment-gateway.php:94
+msgid "API Key"
+msgstr "API密钥"
+
+#: includes/class-wc-ipg-payment-gateway.php:99
+msgid "Test Mode"
+msgstr "测试模式"
+
+#: includes/class-wc-ipg-payment-gateway.php:101
+msgid "Enable test mode"
+msgstr "启用测试模式"
+
+#: templates/payment-form.php:15
+msgid "Card Number"
+msgstr "卡号"
+
+#: templates/payment-form.php:20
+msgid "Expiry Date"
+msgstr "有效期"
+
+#: templates/payment-form.php:25
+msgid "CVV"
+msgstr "CVV"
+
+#: templates/payment-form.php:30
+msgid "Card Holder Name"
+msgstr "持卡人姓名"
+
+#: includes/class-wc-ipg-payment-gateway.php:120
+msgid "Pay with IPG"
+msgstr "使用IPG支付"
+
+#: includes/class-wc-ipg-payment-gateway.php:145
+msgid "Payment successful. Thank you for your order."
+msgstr "支付成功。感谢您的订单。"
+
+#: includes/class-wc-ipg-payment-gateway.php:150
+msgid "Payment failed. Please try again."
+msgstr "支付失败。请重试。"
+
+#: includes/class-wc-ipg-payment-gateway.php:155
+msgid "Transaction processing. Please wait for confirmation."
+msgstr "交易处理中。请等待确认。"
+
+#: includes/class-wc-ipg-payment-gateway.php:160
+msgid "Invalid payment details. Please check your information."
+msgstr "支付信息无效。请检查您的信息。"
