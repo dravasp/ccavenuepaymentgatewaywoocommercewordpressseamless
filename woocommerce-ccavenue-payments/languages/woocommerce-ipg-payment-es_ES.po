@@ -1,0 +1,92 @@
+# Spanish translation for WooCommerce IPG Payment Plugin
+# Copyright (C) 2024 WooCommerce IPG Payment
+# This file is distributed under the same license as the WooCommerce IPG Payment package.
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce IPG Payment 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-15 12:00+0000\n"
+"PO-Revision-Date: 2024-01-15 12:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Spanish\n"
+"Language: es_ES\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: includes/class-wc-ipg-payment-gateway.php:45
+msgid "IPG Payment Gateway"
+msgstr "Pasarela de Pago IPG"
+
+#: includes/class-wc-ipg-payment-gateway.php:67
+msgid "Enable IPG Payment"
+msgstr "Habilitar Pago IPG"
+
+#: includes/class-wc-ipg-payment-gateway.php:72
+msgid "Title"
+msgstr "Título"
+
+#: includes/class-wc-ipg-payment-gateway.php:74
+msgid "This controls the title which the user sees during checkout."
+msgstr "Esto controla el título que el usuario ve durante el pago."
+
+#: includes/class-wc-ipg-payment-gateway.php:78
+msgid "Description"
+msgstr "Descripción"
+
+#: includes/class-wc-ipg-payment-gateway.php:80
+msgid "Payment method description that the customer will see on your checkout."
+msgstr "Descripción del método de pago que el cliente verá en su proceso de pago."
+
+#: includes/class-wc-ipg-payment-gateway.php:89
+msgid "Merchant ID"
+msgstr "ID de Comerciante"
+
+#: includes/class-wc-ipg-payment-gateway.php:94
+msgid "API Key"
+msgstr "Clave API"
+
+#: includes/class-wc-ipg-payment-gateway.php:99
+msgid "Test Mode"
+msgstr "Modo de Prueba"
+
+#: includes/class-wc-ipg-payment-gateway.php:101
+msgid "Enable test mode"
+msgstr "Habilitar modo de prueba"
+
+#: templates/payment-form.php:15
+msgid "Card Number"
+msgstr "Número de Tarjeta"
+
+#: templates/payment-form.php:20
+msgid "Expiry Date"
+msgstr "Fecha de Vencimiento"
+
+#: templates/payment-form.php:25
+msgid "CVV"
+msgstr "CVV"
+
+#: templates/payment-form.php:30
+msgid "Card Holder Name"
+msgstr "Nombre del Titular"
+
+#: includes/class-wc-ipg-payment-gateway.php:120
+msgid "Pay with IPG"
+msgstr "Pagar con IPG"
+
+#: includes/class-wc-ipg-payment-gateway.php:145
+msgid "Payment successful. Thank you for your order."
+msgstr "Pago exitoso. Gracias por su pedido."
+
+#: includes/class-wc-ipg-payment-gateway.php:150
+msgid "Payment failed. Please try again."
+msgstr "Pago fallido. Por favor, inténtelo de nuevo."
+
+#: includes/class-wc-ipg-payment-gateway.php:155
+msgid "Transaction processing. Please wait for confirmation."
+msgstr "Procesando transacción. Por favor, espere la confirmación."
+
+#: includes/class-wc-ipg-payment-gateway.php:160
+msgid "Invalid payment details. Please check your information."
+msgstr "Detalles de pago inválidos. Por favor, verifique su información."
