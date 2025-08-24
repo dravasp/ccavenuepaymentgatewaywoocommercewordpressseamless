@@ -1,0 +1,65 @@
+/* Admin CSS for WooCommerce CCAvenue Payments */
+
+.ccavenue-settings-page h1 {
+    color: #2271b1;
+    margin-bottom: 20px;
+}
+
+.ccavenue-settings-page .form-table th {
+    width: 250px;
+    padding-right: 20px;
+}
+
+.ccavenue-settings-page .form-table td {
+    padding-bottom: 15px;
+}
+
+.ccavenue-settings-page .description {
+    font-style: italic;
+    color: #666;
+    margin-top: 5px;
+}
+
+.ccavenue-settings-page h4 {
+    margin-top: 30px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.ccavenue-settings-page ol {
+    list-style-type: decimal;
+    margin-left: 20px;
+    margin-bottom: 15px;
+}
+
+.ccavenue-settings-page ol li {
+    margin-bottom: 5px;
+}
+
+.ccavenue-settings-page .submit {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+/* Specific styles for the payment gateway settings page */
+#woocommerce_ccavenue_merchant_id,
+#woocommerce_ccavenue_access_code,
+#woocommerce_ccavenue_working_key {
+    width: 400px; /* Adjust width as needed */
+}
+
+#woocommerce_ccavenue_description {
+    width: 100%;
+    min-height: 80px;
+}
+
+.form-table input[type="checkbox"] {
+    margin-top: 0;
+}
+
+/* Styles for multiselect */
+.form-table select[multiple] {
+    min-height: 100px;
+}
