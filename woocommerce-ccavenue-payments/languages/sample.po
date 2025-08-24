@@ -1,1 +1,11 @@
-# language files here
+msgid "Payment Gateway"
+msgstr "भुगतान गेटवे"  # Hindi
+
+msgid "Transaction Successful"
+msgstr "लेन-देन सफल"  # Hindi
+
+msgid "Please enter your card details"
+msgstr "कृपया अपने कार्ड का विवरण दर्ज करें"  # Hindi
+
+msgid "Payment Failed"
+msgstr "भुगतान विफल"  # Hindi
