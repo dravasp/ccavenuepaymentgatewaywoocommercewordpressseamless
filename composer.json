@@ -1,28 +1,46 @@
 {
-    "name": "dravasp/ccavenuepaymentgatewaywoocommercewordpressseamless",
-    "description": "CCAvenue Internet Payment Gateway Module for WooCommerce WordPress 10.1.1x optimised for aws Bitnami",
+    "name": "weskyprint/woocommerce-ccavenue-payments",
+    "description": "Advanced CCAvenue payment gateway integration for WooCommerce with voice notifications, dynamic QR codes, and enhanced security features.",
     "type": "wordpress-plugin",
-    "license": "MIT",
+    "keywords": ["woocommerce", "ccavenue", "payment gateway", "qr code", "voice notifications", "ecommerce"],
+    "homepage": "https://ccavenue.com/woocommerce-ccavenue-payments",
+    "license": "GPL-2.0-or-later",
     "authors": [
         {
-            "name": "CCAvenue",
-            "email": "support@ccavenue.com"
+            "name": "WE SKY PRINT LLP",
+            "homepage": "https://weskyprint.com"
         }
     ],
+    "support": {
+        "issues": "https://github.com/weskyprint/woocommerce-ccavenue-payments/issues",
+        "source": "https://github.com/weskyprint/woocommerce-ccavenue-payments"
+    },
     "require": {
-        "php": ">=7.0",
-        "woocommerce/woocommerce": "^5.0"
+        "php": ">=7.4",
+        "composer/installers": "^2.0"
     },
-    "autoload": {
-        "psr-4": {
-            "YourNamespace\\": "src/"
+    "require-dev": {
+        "wp-coding-standards/wpcs": "^3.0",
+        "phpcompatibility/php-compatibility": "^9.3",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "composer/installers": true
         }
     },
-    "autoload-dev": {
-        "psr-4": {
-            "YourNamespace\\Tests\\": "tests/"
-        }
-    },
-    "minimum-stability": "stable",
-    "prefer-stable": true
+    "scripts": {
+        "post-install-cmd": [
+            "@phpcs-install"
+        ],
+        "post-update-cmd": [
+            "@phpcs-install"
+        ],
+        "phpcs-install": [
+            "\"vendor/bin/phpcs\" --config-set installed_paths \"vendor/wp-coding-standards/wpcs,vendor/phpcompatibility/php-compatibility\""
+        ],
+        "lint": "vendor/bin/phpcs",
+        "lint-fix": "vendor/bin/phpcbf"
+    }
 }
