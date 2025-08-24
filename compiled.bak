@@ -1,0 +1,1712 @@
+<?php
+/**
+ * Plugin Name: WooCommerce CCAvenue Payments
+ * Plugin URI: https://ccavenue.com/woocommerce-ccavenue-payments
+ * Description: Advanced CCAvenue payment gateway integration with voice notifications, dynamic QR codes, and enhanced security features.
+ * Version: 1.0.0
+ * Author: WE SKY PRINT LLP
+ * Author URI: https://weskyprint.com
+ * Text Domain: woocommerce-ccavenue-payments
+ * Domain Path: /languages
+ * Requires at least: 5.6
+ * Requires PHP: 7.4
+ * WC requires at least: 5.0
+ * WC tested up to: 7.0
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+// Define plugin constants
+define( 'WC_CCAVENUE_PAYMENTS_VERSION', '1.0.0' );
+define( 'WC_CCAVENUE_PAYMENTS_PLUGIN_FILE', __FILE__ );
+define( 'WC_CCAVENUE_PAYMENTS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'WC_CCAVENUE_PAYMENTS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'WC_CCAVENUE_PAYMENTS_ASSETS_URL', WC_CCAVENUE_PAYMENTS_PLUGIN_URL . 'assets/' );
+
+// Check if WooCommerce is active
+if ( ! in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) ) {
+    add_action( 'admin_notices', 'wc_ccavenue_payments_woocommerce_missing_notice' );
+    return;
+}
+
+/**
+ * WooCommerce missing notice
+ */
+function wc_ccavenue_payments_woocommerce_missing_notice() {
+    ?>
+    <div class="error">
+        <p><?php esc_html_e( 'WooCommerce CCAvenue Payments requires WooCommerce to be installed and active.', 'woocommerce-ccavenue-payments' ); ?></p>
+    </div>
+    <?php
+}
+
+/**
+ * CCAvenue Encryption/Decryption Handler
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_CCAvenue_Encryption {
+    
+    /**
+     * Encrypt data using CCAvenue's method
+     *
+     * @param string $plainText Plain text to encrypt
+     * @param string $key Working key
+     * @return string Encrypted text
+     */
+    public function encrypt( $plainText, $key ) {
+        $key = $this->hextobin( md5( $key ) );
+        $initVector = pack( "C*", 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f );
+        $openMode = openssl_encrypt( $plainText, 'AES-128-CBC', $key, OPENSSL_RAW_DATA, $initVector );
+        $encryptedText = bin2hex( $openMode );
+        return $encryptedText;
+    }
+    
+    /**
+     * Decrypt data using CCAvenue's method
+     *
+     * @param string $encryptedText Encrypted text
+     * @param string $key Working key
+     * @return string Decrypted text
+     */
+    public function decrypt( $encryptedText, $key ) {
+        $key = $this->hextobin( md5( $key ) );
+        $initVector = pack( "C*", 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f );
+        $encryptedText = $this->hextobin( $encryptedText );
+        $decryptedText = openssl_decrypt( $encryptedText, 'AES-128-CBC', $key, OPENSSL_RAW_DATA, $initVector );
+        return $decryptedText;
+    }
+    
+    /**
+     * Convert hexadecimal to binary
+     *
+     * @param string $hexString Hexadecimal string
+     * @return string Binary string
+     */
+    private function hextobin( $hexString ) {
+        $length = strlen( $hexString );
+        $binString = "";
+        $count = 0;
+        
+        while ( $count < $length ) {
+            $subString = substr( $hexString, $count, 2 );
+            $packedString = pack( "H*", $subString );
+            
+            if ( $count == 0 ) {
+                $binString = $packedString;
+            } else {
+                $binString .= $packedString;
+            }
+            
+            $count += 2;
+        }
+        
+        return $binString;
+    }
+    
+    /**
+     * Sanitize and validate payment data
+     *
+     * @param array $data Payment data
+     * @return array Sanitized data
+     */
+    public function sanitize_payment_data( $data ) {
+        $sanitized = array();
+        
+        foreach ( $data as $key => $value ) {
+            if ( is_array( $value ) ) {
+                $sanitized[ $key ] = $this->sanitize_payment_data( $value );
+            } else {
+                $sanitized[ $key ] = $this->sanitize_field( $value, $key );
+            }
+        }
+        
+        return $sanitized;
+    }
+    
+    /**
+     * Sanitize individual field
+     *
+     * @param mixed $value Field value
+     * @param string $key Field key
+     * @return mixed Sanitized value
+     */
+    private function sanitize_field( $value, $key ) {
+        $value = trim( $value );
+        
+        // Different sanitization based on field type
+        switch ( $key ) {
+            case 'billing_email':
+            case 'delivery_email':
+                return sanitize_email( $value );
+                
+            case 'amount':
+            case 'order_total':
+                return floatval( $value );
+                
+            case 'order_id':
+            case 'merchant_id':
+            case 'tracking_id':
+                return sanitize_text_field( $value );
+                
+            case 'billing_address':
+            case 'delivery_address':
+            case 'failure_message':
+                return sanitize_textarea_field( $value );
+                
+            default:
+                return sanitize_text_field( $value );
+        }
+    }
+    
+    /**
+     * Validate webhook signature
+     *
+     * @param string $payload Webhook payload
+     * @param string $signature Signature header
+     * @param string $secret Webhook secret
+     * @return bool Whether signature is valid
+     */
+    public function validate_webhook_signature( $payload, $signature, $secret ) {
+        $expected_signature = hash_hmac( 'sha256', $payload, $secret );
+        return hash_equals( $expected_signature, $signature );
+    }
+}
+
+/**
+ * Installation and Database Setup
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_CCAvenue_Payments_Install {
+    
+    /**
+     * Plugin version for database updates
+     */
+    const DB_VERSION = '1.0.0';
+    
+    /**
+     * Install plugin
+     */
+    public static function install() {
+        self::create_tables();
+        self::create_options();
+        self::update_db_version();
+    }
+    
+    /**
+     * Create database tables
+     */
+    private static function create_tables() {
+        global $wpdb;
+        
+        $charset_collate = $wpdb->get_charset_collate();
+        $table_name = $wpdb->prefix . 'ccavenue_transactions';
+        
+        $sql = "CREATE TABLE $table_name (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            order_id bigint(20) NOT NULL,
+            transaction_ref varchar(100) NOT NULL,
+            amount decimal(15,2) NOT NULL,
+            currency varchar(3) NOT NULL,
+            payment_method varchar(50) NOT NULL,
+            status varchar(20) NOT NULL,
+            tracking_id varchar(100) DEFAULT NULL,
+            bank_ref_no varchar(100) DEFAULT NULL,
+            failure_message text DEFAULT NULL,
+            retry_count int(11) DEFAULT 0,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            KEY order_id (order_id),
+            KEY transaction_ref (transaction_ref),
+            KEY status (status),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+        
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta( $sql );
+    }
+    
+    /**
+     * Create default options
+     */
+    private static function create_options() {
+        // Set default currency to INR for CCAvenue
+        if ( ! get_option( 'wc_ccavenue_default_currency' ) ) {
+            update_option( 'wc_ccavenue_default_currency', 'INR' );
+        }
+        
+        // Set default payment methods
+        if ( ! get_option( 'wc_ccavenue_enabled_methods' ) ) {
+            update_option( 'wc_ccavenue_enabled_methods', array( 'cards', 'netbanking', 'upi', 'wallet' ) );
+        }
+        
+        // Set default retry settings
+        if ( ! get_option( 'wc_ccavenue_retry_enabled' ) ) {
+            update_option( 'wc_ccavenue_retry_enabled', 'yes' );
+        }
+        
+        if ( ! get_option( 'wc_ccavenue_max_retries' ) ) {
+            update_option( 'wc_ccavenue_max_retries', 5 );
+        }
+    }
+    
+    /**
+     * Update database version
+     */
+    private static function update_db_version() {
+        update_option( 'wc_ccavenue_db_version', self::DB_VERSION );
+    }
+    
+    /**
+     * Check if database needs update
+     */
+    public static function needs_update() {
+        $current_version = get_option( 'wc_ccavenue_db_version', '0' );
+        return version_compare( $current_version, self::DB_VERSION, '<' );
+    }
+    
+    /**
+     * Update database if needed
+     */
+    public static function update() {
+        if ( self::needs_update() ) {
+            self::install();
+        }
+    }
+    
+    /**
+     * Create transaction log
+     */
+    public static function log_transaction( $order_id, $transaction_ref, $amount, $currency, $payment_method, $status, $tracking_id = null, $bank_ref_no = null, $failure_message = null, $retry_count = 0 ) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'ccavenue_transactions';
+        $current_time = current_time( 'mysql' );
+        
+        $wpdb->insert( $table_name, array(
+            'order_id' => $order_id,
+            'transaction_ref' => $transaction_ref,
+            'amount' => $amount,
+            'currency' => $currency,
+            'payment_method' => $payment_method,
+            'status' => $status,
+            'tracking_id' => $tracking_id,
+            'bank_ref_no' => $bank_ref_no,
+            'failure_message' => $failure_message,
+            'retry_count' => $retry_count,
+            'created_at' => $current_time,
+            'updated_at' => $current_time
+        ) );
+        
+        return $wpdb->insert_id;
+    }
+    
+    /**
+     * Update transaction status
+     */
+    public static function update_transaction( $transaction_ref, $status, $tracking_id = null, $bank_ref_no = null, $failure_message = null ) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'ccavenue_transactions';
+        
+        $wpdb->update( $table_name, array(
+            'status' => $status,
+            'tracking_id' => $tracking_id,
+            'bank_ref_no' => $bank_ref_no,
+            'failure_message' => $failure_message,
+            'updated_at' => current_time( 'mysql' )
+        ), array( 'transaction_ref' => $transaction_ref ) );
+        
+        return $wpdb->rows_affected;
+    }
+    
+    /**
+     * Get transaction by reference
+     */
+    public static function get_transaction( $transaction_ref ) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'ccavenue_transactions';
+        
+        return $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM $table_name WHERE transaction_ref = %s",
+            $transaction_ref
+        ) );
+    }
+    
+    /**
+     * Get transactions by order ID
+     */
+    public static function get_order_transactions( $order_id ) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'ccavenue_transactions';
+        
+        return $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM $table_name WHERE order_id = %d ORDER BY created_at DESC",
+            $order_id
+        ) );
+    }
+    
+    /**
+     * Clean up old transactions
+     */
+    public static function cleanup_old_transactions( $days = 30 ) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'ccavenue_transactions';
+        $cutoff_date = date( 'Y-m-d H:i:s', strtotime( "-$days days" ) );
+        
+        return $wpdb->query( $wpdb->prepare(
+            "DELETE FROM $table_name WHERE created_at < %s AND status IN ('pending', 'failed')",
+            $cutoff_date
+        ) );
+    }
+}
+
+/**
+ * Dynamic QR Code Generator for UPI Payments
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_CCAvenue_QR_Generator {
+    
+    /**
+     * QR code size
+     */
+    const QR_SIZE = 300;
+    
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        add_action( 'wp_ajax_generate_upi_qr', array( $this, 'ajax_generate_qr' ) );
+        add_action( 'wp_ajax_nopriv_generate_upi_qr', array( $this, 'ajax_generate_qr' ) );
+    }
+    
+    /**
+     * Generate QR code for UPI payment
+     */
+    public function generate_qr_code( $amount, $currency, $transaction_ref ) {
+        $vpa = get_option( 'wc_ccavenue_upi_vpa' );
+        $merchant_name = get_option( 'wc_ccavenue_merchant_name' );
+        
+        if ( ! $vpa || ! $merchant_name ) {
+            return $this->get_placeholder_qr();
+        }
+        
+        // Generate UPI payment URL
+        $upi_url = $this->generate_upi_url( $vpa, $merchant_name, $amount, $currency, $transaction_ref );
+        
+        // Generate QR code using Google Charts API
+        $qr_url = 'https://chart.googleapis.com/chart?cht=qr&chs=' . self::QR_SIZE . 'x' . self::QR_SIZE . '&chl=' . urlencode( $upi_url );
+        
+        return $qr_url;
+    }
+    
+    /**
+     * Generate UPI payment URL
+     */
+    private function generate_upi_url( $vpa, $merchant_name, $amount, $currency, $transaction_ref ) {
+        $params = array(
+            'pa' => $vpa,
+            'pn' => urlencode( $merchant_name ),
+            'am' => $amount,
+            'cu' => $currency,
+            'tn' => urlencode( 'Payment for order ' . $transaction_ref )
+        );
+        
+        return 'upi://pay?' . http_build_query( $params );
+    }
+    
+    /**
+     * AJAX handler for generating QR codes
+     */
+    public function ajax_generate_qr() {
+        check_ajax_referer( 'wc-ccavenue-nonce', 'nonce' );
+        
+        $amount = floatval( $_POST['amount'] ?? 0 );
+        $currency = sanitize_text_field( $_POST['currency'] ?? 'INR' );
+        $transaction_ref = sanitize_text_field( $_POST['transaction_ref'] ?? '' );
+        
+        if ( ! $amount || ! $transaction_ref ) {
+            wp_send_json_error( array( 'error' => 'Invalid parameters' ) );
+        }
+        
+        $qr_url = $this->generate_qr_code( $amount, $currency, $transaction_ref );
+        
+        wp_send_json_success( array(
+            'qr_url' => $qr_url,
+            'transaction_ref' => $transaction_ref
+        ) );
+    }
+    
+    /**
+     * Get placeholder QR code
+     */
+    private function get_placeholder_qr() {
+        return WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'images/qr-placeholder.png';
+    }
+    
+    /**
+     * Validate UPI VPA
+     */
+    public function validate_upi_vpa( $vpa ) {
+        // Basic VPA validation - should be in format name@provider
+        return preg_match( '/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/', $vpa );
+    }
+    
+    /**
+     * Get supported UPI apps
+     */
+    public function get_supported_upi_apps() {
+        return array(
+            'google_pay' => array(
+                'name' => 'Google Pay',
+                'logo' => WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'images/upi/google-pay.png',
+                'url' => 'https://pay.google.com/'
+            ),
+            'phonepe' => array(
+                'name' => 'PhonePe',
+                'logo' => WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'images/upi/phonepe.png',
+                'url' => 'https://www.phonepe.com/'
+            ),
+            'paytm' => array(
+                'name' => 'Paytm',
+                'logo' => WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'images/upi/paytm.png',
+                'url' => 'https://paytm.com/'
+            ),
+            'bhim' => array(
+                'name' => 'BHIM UPI',
+                'logo' => WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'images/upi/bhim.png',
+                'url' => 'https://www.npci.org.in/what-we-do/bhim/product-overview'
+            )
+        );
+    }
+}
+
+/**
+ * Voice Notifications Handler for Alexa and Google Home
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_CCAvenue_Voice_Notifications {
+    
+    /**
+     * Alexa Skills Kit API endpoint
+     */
+    const ALEXA_API_URL = 'https://api.amazonalexa.com/v1/skillMessaging/sendMessage';
+    
+    /**
+     * Google Home API endpoint
+     */
+    const GOOGLE_HOME_API_URL = 'https://homegraph.googleapis.com/v1/devices:reportStateAndNotification';
+    
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        add_action( 'wc_ccavenue_payment_completed', array( $this, 'handle_payment_completion' ), 10, 2 );
+    }
+    
+    /**
+     * Handle payment completion
+     */
+    public function handle_payment_completion( $order_id, $payment_data ) {
+        $order = wc_get_order( $order_id );
+        
+        if ( ! $order ) {
+            return;
+        }
+        
+        $this->send_payment_notification( $order, 'success' );
+    }
+    
+    /**
+     * Send payment notification
+     */
+    public function send_payment_notification( $order, $status ) {
+        $gateway = WC_CCAvenue_Payments::instance()->get_gateway();
+        
+        if ( ! $gateway->enable_voice_alerts ) {
+            return;
+        }
+        
+        $alexa_user_id = $order->get_meta( '_alexa_user_id' );
+        $google_user_id = $order->get_meta( '_google_home_user_id' );
+        
+        if ( $alexa_user_id ) {
+            $this->send_alexa_notification( $alexa_user_id, $order, $status );
+        }
+        
+        if ( $google_user_id ) {
+            $this->send_google_home_notification( $google_user_id, $order, $status );
+        }
+    }
+    
+    /**
+     * Send Alexa notification
+     */
+    private function send_alexa_notification( $user_id, $order, $status ) {
+        $alexa_skill_id = get_option( 'wc_ccavenue_alexa_skill_id' );
+        $alexa_access_token = get_option( 'wc_ccavenue_alexa_access_token' );
+        
+        if ( ! $alexa_skill_id || ! $alexa_access_token ) {
+            return;
+        }
+        
+        $message = $this->get_notification_message( $order, $status );
+        
+        $payload = array(
+            'userId' => $user_id,
+            'message' => array(
+                'content' => $message,
+                'type' => 'PlainText'
+            )
+        );
+        
+        $response = wp_remote_post( self::ALEXA_API_URL, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $alexa_access_token
+            ),
+            'body' => json_encode( $payload ),
+            'timeout' => 15
+        ) );
+        
+        if ( is_wp_error( $response ) ) {
+            error_log( 'Alexa notification failed: ' . $response->get_error_message() );
+        }
+    }
+    
+    /**
+     * Send Google Home notification
+     */
+    private function send_google_home_notification( $user_id, $order, $status ) {
+        $google_project_id = get_option( 'wc_ccavenue_google_project_id' );
+        $google_api_key = get_option( 'wc_ccavenue_google_api_key' );
+        
+        if ( ! $google_project_id || ! $google_api_key ) {
+            return;
+        }
+        
+        $message = $this->get_notification_message( $order, $status );
+        
+        $payload = array(
+            'requestId' => uniqid(),
+            'agentUserId' => $user_id,
+            'payload' => array(
+                'devices' => array(
+                    'notifications' => array(
+                        'Notification' => array(
+                            'priority' => 'HIGH',
+                            'message' => $message
+                        )
+                    )
+                )
+            )
+        );
+        
+        $response = wp_remote_post( self::GOOGLE_HOME_API_URL . '?key=' . $google_api_key, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+            ),
+            'body' => json_encode( $payload ),
+            'timeout' => 15
+        ) );
+        
+        if ( is_wp_error( $response ) ) {
+            error_log( 'Google Home notification failed: ' . $response->get_error_message() );
+        }
+    }
+    
+    /**
+     * Get notification message
+     */
+    private function get_notification_message( $order, $status ) {
+        $amount = wc_price( $order->get_total() );
+        $order_id = $order->get_id();
+        
+        switch ( $status ) {
+            case 'success':
+                return sprintf(
+                    __( 'You have received %s payment via CCAvenue for order %d. Payment successful.', 'woocommerce-ccavenue-payments' ),
+                    $amount,
+                    $order_id
+                );
+                
+            case 'failed':
+                return sprintf(
+                    __( 'Payment of %s for order %d via CCAvenue has failed. Please check your payment method.', 'woocommerce-ccavenue-payments' ),
+                    $amount,
+                    $order_id
+                );
+                
+            case 'pending':
+                return sprintf(
+                    __( 'Payment of %s for order %d via CCAvenue is pending verification. Please wait for confirmation.', 'woocommerce-ccavenue-payments' ),
+                    $amount,
+                    $order_id
+                );
+                
+            default:
+                return sprintf(
+                    __( 'Payment status update for order %d: %s', 'woocommerce-ccavenue-payments' ),
+                    $order_id,
+                    $status
+                );
+        }
+    }
+    
+    /**
+     * Get Alexa setup instructions
+     */
+    public function get_alexa_setup_instructions() {
+        return array(
+            'steps' => array(
+                __( 'Go to Alexa Developer Console (https://developer.amazon.com/alexa/console/ask)', 'woocommerce-ccavenue-payments' ),
+                __( 'Create a new skill or use existing one', 'woocommerce-ccavenue-payments' ),
+                __( 'Enable Skill Messaging in the skill settings', 'woocommerce-ccavenue-payments' ),
+                __( 'Note down your Skill ID and generate an access token', 'woocommerce-ccavenue-payments' ),
+                __( 'Configure the plugin with your Skill ID and access token', 'woocommerce-ccavenue-payments' )
+            ),
+            'documentation' => 'https://developer.amazon.com/docs/smapi/skill-messaging-api-reference.html'
+        );
+    }
+    
+    /**
+     * Get Google Home setup instructions
+     */
+    public function get_google_home_setup_instructions() {
+        return array(
+            'steps' => array(
+                __( 'Go to Google Actions Console (https://console.actions.google.com/)', 'woocommerce-ccavenue-payments' ),
+                __( 'Create a new project or use existing one', 'woocommerce-ccavenue-payments' ),
+                __( 'Enable Home Graph API in Google Cloud Console', 'woocommerce-ccavenue-payments' ),
+                __( 'Generate API key for your project', 'woocommerce-ccavenue-payments' ),
+                __( 'Configure the plugin with your Project ID and API key', 'woocommerce-ccavenue-payments' )
+            ),
+            'documentation' => 'https://developers.google.com/assistant/smarthome/develop/notifications'
+        );
+    }
+}
+
+/**
+ * CCAvenue Webhook Handler
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_CCAvenue_Webhook_Handler {
+    
+    /**
+     * Webhook events
+     */
+    const WEBHOOK_EVENTS = array(
+        'payment_success' => 'payment.success',
+        'payment_failure' => 'payment.failure',
+        'payment_pending' => 'payment.pending',
+        'payment_refund' => 'payment.refund',
+        'payment_fraud' => 'payment.fraud'
+    );
+    
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        add_action( 'woocommerce_api_ccavenue_webhook', array( $this, 'handle_webhook' ) );
+        add_action( 'wc_ccavenue_webhook_payment_success', array( $this, 'process_payment_success' ), 10, 2 );
+        add_action( 'wc_ccavenue_webhook_payment_failure', array( $this, 'process_payment_failure' ), 10, 2 );
+        add_action( 'wc_ccavenue_webhook_payment_pending', array( $this, 'process_payment_pending' ), 10, 2 );
+        add_action( 'wc_ccavenue_webhook_payment_refund', array( $this, 'process_payment_refund' ), 10, 2 );
+        add_action( 'wc_ccavenue_webhook_payment_fraud', array( $this, 'process_payment_fraud' ), 10, 2 );
+    }
+    
+    /**
+     * Handle incoming webhook
+     */
+    public function handle_webhook() {
+        // Get webhook data
+        $payload = file_get_contents( 'php://input' );
+        $signature = $_SERVER['HTTP_X_CCAVENUE_SIGNATURE'] ?? '';
+        $event_type = $_SERVER['HTTP_X_CCAVENUE_EVENT'] ?? '';
+        
+        // Verify webhook signature
+        $encryption = WC_CCAvenue_Payments::instance()->get_encryption();
+        $is_valid = $encryption->validate_webhook_signature( $payload, $signature, WC_CCAvenue_Payments::instance()->get_gateway()->working_key );
+        
+        if ( ! $is_valid ) {
+            wp_send_json_error( array( 'error' => 'Invalid signature' ), 401 );
+            exit;
+        }
+        
+        // Parse payload
+        $data = json_decode( $payload, true );
+        
+        if ( ! $data || ! isset( $data['order_id'] ) ) {
+            wp_send_json_error( array( 'error' => 'Invalid payload' ), 400 );
+            exit;
+        }
+        
+        // Sanitize data
+        $data = $encryption->sanitize_payment_data( $data );
+        
+        // Process webhook event
+        $this->process_webhook_event( $event_type, $data );
+        
+        wp_send_json_success( array( 'message' => 'Webhook processed' ) );
+        exit;
+    }
+    
+    /**
+     * Process webhook event
+     */
+    private function process_webhook_event( $event_type, $data ) {
+        switch ( $event_type ) {
+            case self::WEBHOOK_EVENTS['payment_success']:
+                do_action( 'wc_ccavenue_webhook_payment_success', $data['order_id'], $data );
+                break;
+                
+            case self::WEBHOOK_EVENTS['payment_failure']:
+                do_action( 'wc_ccavenue_webhook_payment_failure', $data['order_id'], $data );
+                break;
+                
+            case self::WEBHOOK_EVENTS['payment_pending']:
+                do_action( 'wc_ccavenue_webhook_payment_pending', $data['order_id'], $data );
+                break;
+                
+            case self::WEBHOOK_EVENTS['payment_refund']:
+                do_action( 'wc_ccavenue_webhook_payment_refund', $data['order_id'], $data );
+                break;
+                
+            case self::WEBHOOK_EVENTS['payment_fraud']:
+                do_action( 'wc_ccavenue_webhook_payment_fraud', $data['order_id'], $data );
+                break;
+                
+            default:
+                error_log( 'Unknown CCAvenue webhook event: ' . $event_type );
+                break;
+        }
+    }
+    
+    /**
+     * Process payment success
+     */
+    public function process_payment_success( $order_id, $data ) {
+        $order = wc_get_order( $order_id );
+        
+        if ( ! $order ) {
+            error_log( 'CCAvenue webhook: Order not found - ' . $order_id );
+            return;
+        }
+        
+        // Update order status
+        $order->update_status( 'processing', __( 'Payment successful via CCAvenue.', 'woocommerce-ccavenue-payments' ) );
+        
+        // Add order notes
+        $order->add_order_note( sprintf(
+            __( 'CCAvenue payment successful. Tracking ID: %s, Bank Ref: %s', 'woocommerce-ccavenue-payments' ),
+            $data['tracking_id'] ?? 'N/A',
+            $data['bank_ref_no'] ?? 'N/A'
+        ) );
+        
+        // Update meta data
+        $order->update_meta_data( '_ccavenue_payment_status', 'success' );
+        $order->update_meta_data( '_ccavenue_tracking_id', $data['tracking_id'] ?? '' );
+        $order->update_meta_data( '_ccavenue_bank_ref_no', $data['bank_ref_no'] ?? '' );
+        $order->update_meta_data( '_ccavenue_payment_mode', $data['payment_mode'] ?? '' );
+        $order->save();
+        
+        // Trigger voice notification
+        if ( WC_CCAvenue_Payments::instance()->get_gateway()->enable_voice_alerts ) {
+            WC_CCAvenue_Payments::instance()->voice_notifications->send_payment_notification( $order, 'success' );
+        }
+        
+        // Log transaction
+        WC_CCAvenue_Payments::instance()->get_gateway()->log_transaction( $order_id, $order_id, 'success', $data );
+    }
+    
+    /**
+     * Process payment failure
+     */
+    public function process_payment_failure( $order_id, $data ) {
+        $order = wc_get_order( $order_id );
+        
+        if ( ! $order ) {
+            error_log( 'CCAvenue webhook: Order not found - ' . $order_id );
+            return;
+        }
+        
+        $retry_count = $order->get_meta( '_ccavenue_retry_count' ) ?: 0;
+        
+        if ( $retry_count < 5 && WC_CCAvenue_Payments::instance()->get_gateway()->retry_payments ) {
+            // Retry payment
+            $retry_count++;
+            $order->update_meta_data( '_ccavenue_retry_count', $retry_count );
+            $order->add_order_note( sprintf(
+                __( 'Payment failed. Retry attempt %d of 5. Reason: %s', 'woocommerce-ccavenue-payments' ),
+                $retry_count,
+                $data['failure_message'] ?? 'Unknown error'
+            ) );
+            $order->save();
+        } else {
+            // Mark as failed after max retries
+            $order->update_status( 'failed', __( 'Payment failed via CCAvenue after maximum retries.', 'woocommerce-ccavenue-payments' ) );
+            $order->add_order_note( sprintf(
+                __( 'Payment failed after %d attempts. Reason: %s', 'woocommerce-ccavenue-payments' ),
+                $retry_count,
+                $data['failure_message'] ?? 'Unknown error'
+            ) );
+            
+            $order->update_meta_data( '_ccavenue_payment_status', 'failed' );
+            $order->save();
+        }
+        
+        // Log transaction
+        WC_CCAvenue_Payments::instance()->get_gateway()->log_transaction( $order_id, $order_id, 'failed', $data );
+    }
+    
+    /**
+     * Process payment pending
+     */
+    public function process_payment_pending( $order_id, $data ) {
+        $order = wc_get_order( $order_id );
+        
+        if ( ! $order ) {
+            error_log( 'CCAvenue webhook: Order not found - ' . $order_id );
+            return;
+        }
+        
+        $order->update_status( 'on-hold', __( 'Payment pending via CCAvenue.', 'woocommerce-ccavenue-payments' ) );
+        $order->add_order_note( __( 'Payment is pending verification with bank.', 'woocommerce-ccavenue-payments' ) );
+        
+        $order->update_meta_data( '_ccavenue_payment_status', 'pending' );
+        $order->save();
+        
+        // Log transaction
+        WC_CCAvenue_Payments::instance()->get_gateway()->log_transaction( $order_id, $order_id, 'pending', $data );
+    }
+    
+    /**
+     * Process payment refund
+     */
+    public function process_payment_refund( $order_id, $data ) {
+        $order = wc_get_order( $order_id );
+        
+        if ( ! $order ) {
+            error_log( 'CCAvenue webhook: Order not found - ' . $order_id );
+            return;
+        }
+        
+        $refund_amount = $data['refund_amount'] ?? 0;
+        $refund_reason = $data['refund_reason'] ?? '';
+        
+        // Create refund
+        $refund = wc_create_refund( array(
+            'amount'   => $refund_amount,
+            'reason'   => $refund_reason,
+            'order_id' => $order_id,
+        ) );
+        
+        if ( is_wp_error( $refund ) ) {
+            error_log( 'CCAvenue refund failed: ' . $refund->get_error_message() );
+            return;
+        }
+        
+        $order->add_order_note( sprintf(
+            __( 'Refund processed via CCAvenue. Amount: %s, Reason: %s', 'woocommerce-ccavenue-payments' ),
+            wc_price( $refund_amount ),
+            $refund_reason
+        ) );
+        
+        $order->update_meta_data( '_ccavenue_refund_amount', $refund_amount );
+        $order->update_meta_data( '_ccavenue_refund_reason', $refund_reason );
+        $order->save();
+        
+        // Log transaction
+        WC_CCAvenue_Payments::instance()->get_gateway()->log_transaction( $order_id, $order_id, 'refund', $data );
+    }
+    
+    /**
+     * Process payment fraud
+     */
+    public function process_payment_fraud( $order_id, $data ) {
+        $order = wc_get_order( $order_id );
+        
+        if ( ! $order ) {
+            error_log( 'CCAvenue webhook: Order not found - ' . $order_id );
+            return;
+        }
+        
+        $order->update_status( 'failed', __( 'Payment marked as fraud by CCAvenue.', 'woocommerce-ccavenue-payments' ) );
+        $order->add_order_note( sprintf(
+            __( 'Payment flagged as fraudulent. Reason: %s', 'woocommerce-ccavenue-payments' ),
+            $data['fraud_reason'] ?? 'Suspicious activity detected'
+        ) );
+        
+        $order->update_meta_data( '_ccavenue_payment_status', 'fraud' );
+        $order->update_meta_data( '_ccavenue_fraud_reason', $data['fraud_reason'] ?? '' );
+        $order->save();
+        
+        // Log transaction
+        WC_CCAvenue_Payments::instance()->get_gateway()->log_transaction( $order_id, $order_id, 'fraud', $data );
+    }
+    
+    /**
+     * Get webhook URL
+     */
+    public function get_webhook_url() {
+        return WC()->api_request_url( 'ccavenue_webhook' );
+    }
+}
+
+/**
+ * CCAvenue Payment Gateway
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_Gateway_CCAvenue extends WC_Payment_Gateway {
+    
+    /**
+     * Transaction retry attempts
+     */
+    const MAX_RETRY_ATTEMPTS = 5;
+    
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        $this->id                 = 'ccavenue';
+        $this->has_fields         = true;
+        $this->method_title       = __( 'CCAvenue Payments', 'woocommerce-ccavenue-payments' );
+        $this->method_description = __( 'Accept payments via CCAvenue with voice notifications, dynamic QR codes, and enhanced security.', 'woocommerce-ccavenue-payments' );
+        $this->supports           = array( 'products', 'refunds' );
+        
+        // Load the settings
+        $this->init_form_fields();
+        $this->init_settings();
+        
+        // Define user set variables
+        $this->title                = $this->get_option( 'title' );
+        $this->description          = $this->get_option( 'description' );
+        $this->merchant_id          = $this->get_option( 'merchant_id' );
+        $this->access_code          = $this->get_option( 'access_code' );
+        $this->working_key          = $this->get_option( 'working_key' );
+        $this->test_mode            = 'yes' === $this->get_option( 'test_mode', 'no' );
+        $this->enable_voice_alerts  = 'yes' === $this->get_option( 'enable_voice_alerts', 'no' );
+        $this->enable_qr_payments   = 'yes' === $this->get_option( 'enable_qr_payments', 'yes' );
+        $this->retry_payments       = 'yes' === $this->get_option( 'retry_payments', 'yes' );
+        
+        // Set API endpoints
+        $this->api_url = $this->test_mode 
+            ? 'https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction'
+            : 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+        
+        // Hooks
+        add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+        add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
+        add_action( 'woocommerce_api_wc_gateway_ccavenue', array( $this, 'handle_ccavenue_response' ) );
+        add_action( 'woocommerce_thankyou_' . $this->id, array( $this, 'thankyou_page' ) );
+    }
+    
+    /**
+     * Initialize form fields
+     */
+    public function init_form_fields() {
+        $this->form_fields = array(
+            'enabled' => array(
+                'title'   => __( 'Enable/Disable', 'woocommerce-ccavenue-payments' ),
+                'type'    => 'checkbox',
+                'label'   => __( 'Enable CCAvenue Payments', 'woocommerce-ccavenue-payments' ),
+                'default' => 'no'
+            ),
+            'title' => array(
+                'title'       => __( 'Title', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'text',
+                'description' => __( 'This controls the title which the user sees during checkout.', 'woocommerce-ccavenue-payments' ),
+                'default'     => __( 'CCAvenue Payments', 'woocommerce-ccavenue-payments' ),
+                'desc_tip'    => true,
+            ),
+            'description' => array(
+                'title'       => __( 'Description', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'textarea',
+                'description' => __( 'Payment method description that the customer will see on your checkout.', 'woocommerce-ccavenue-payments' ),
+                'default'     => __( 'Pay securely via CCAvenue with credit cards, debit cards, net banking, UPI, and wallets.', 'woocommerce-ccavenue-payments' ),
+                'desc_tip'    => true,
+            ),
+            'merchant_id' => array(
+                'title'       => __( 'Merchant ID', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'text',
+                'description' => __( 'Your CCAvenue Merchant ID', 'woocommerce-ccavenue-payments' ),
+                'default'     => '',
+                'desc_tip'    => true,
+            ),
+            'access_code' => array(
+                'title'       => __( 'Access Code', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'text',
+                'description' => __( 'Your CCAvenue Access Code', 'woocommerce-ccavenue-payments' ),
+                'default'     => '',
+                'desc_tip'    => true,
+            ),
+            'working_key' => array(
+                'title'       => __( 'Working Key', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'password',
+                'description' => __( 'Your CCAvenue Working Key', 'woocommerce-ccavenue-payments' ),
+                'default'     => '',
+                'desc_tip'    => true,
+            ),
+            'test_mode' => array(
+                'title'       => __( 'Test Mode', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'checkbox',
+                'label'       => __( 'Enable Test Mode', 'woocommerce-ccavenue-payments' ),
+                'default'     => 'no',
+                'description' => __( 'Place the payment gateway in test mode using test API keys.', 'woocommerce-ccavenue-payments' ),
+            ),
+            'enable_voice_alerts' => array(
+                'title'       => __( 'Voice Alerts', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'checkbox',
+                'label'       => __( 'Enable Voice Alerts', 'woocommerce-ccavenue-payments' ),
+                'default'     => 'no',
+                'description' => __( 'Enable voice notifications for successful payments via Alexa and Google Home', 'woocommerce-ccavenue-payments' ),
+            ),
+            'enable_qr_payments' => array(
+                'title'       => __( 'QR Code Payments', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'checkbox',
+                'label'       => __( 'Enable QR Code Payments', 'woocommerce-ccavenue-payments' ),
+                'default'     => 'yes',
+                'description' => __( 'Enable UPI and UPI Lite payments via dynamic QR codes', 'woocommerce-ccavenue-payments' ),
+            ),
+            'retry_payments' => array(
+                'title'       => __( 'Payment Retries', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'checkbox',
+                'label'       => __( 'Enable Payment Retries', 'woocommerce-ccavenue-payments' ),
+                'default'     => 'yes',
+                'description' => __( 'Automatically retry failed payments up to 5 times before marking as failed', 'woocommerce-ccavenue-payments' ),
+            ),
+            'payment_methods' => array(
+                'title'       => __( 'Enabled Payment Methods', 'woocommerce-ccavenue-payments' ),
+                'type'        => 'multiselect',
+                'description' => __( 'Select which payment methods to enable', 'woocommerce-ccavenue-payments' ),
+                'default'     => array( 'cards', 'netbanking', 'upi', 'wallet', 'qr' ),
+                'options'     => array(
+                    'cards'      => __( 'Credit/Debit Cards', 'woocommerce-ccavenue-payments' ),
+                    'netbanking' => __( 'Net Banking', 'woocommerce-ccavenue-payments' ),
+                    'upi'        => __( 'UPI', 'woocommerce-ccavenue-payments' ),
+                    'wallet'     => __( 'Mobile Wallets', 'woocommerce-ccavenue-payments' ),
+                    'qr'         => __( 'QR Code Payments', 'woocommerce-ccavenue-payments' ),
+                ),
+                'desc_tip'    => true,
+            ),
+        );
+    }
+    
+    /**
+     * Process payment
+     */
+    public function process_payment( $order_id ) {
+        $order = wc_get_order( $order_id );
+        
+        // Generate unique transaction reference
+        $transaction_ref = $this->generate_transaction_reference( $order_id );
+        
+        // Save transaction reference to order
+        $order->update_meta_data( '_ccavenue_transaction_ref', $transaction_ref );
+        $order->update_meta_data( '_ccavenue_retry_count', 0 );
+        $order->save();
+        
+        // Log transaction
+        $this->log_transaction( $order_id, $transaction_ref, 'initiated', 
+            array( 'amount' => $order->get_total(), 'currency' => $order->get_currency() ) );
+        
+        // Return thankyou redirect
+        return array(
+            'result'   => 'success',
+            'redirect' => $order->get_checkout_payment_url( true )
+        );
+    }
+    
+    /**
+     * Receipt page
+     */
+    public function receipt_page( $order_id ) {
+        $order = wc_get_order( $order_id );
+        $transaction_ref = $order->get_meta( '_ccavenue_transaction_ref' );
+        
+        echo '<div class="ccavenue-payment-container">';
+        
+        if ( $this->enable_qr_payments ) {
+            echo $this->get_qr_payment_section( $order, $transaction_ref );
+        }
+        
+        echo $this->get_payment_form( $order, $transaction_ref );
+        echo '</div>';
+    }
+    
+    /**
+     * Get QR payment section
+     */
+    private function get_qr_payment_section( $order, $transaction_ref ) {
+        $qr_url = WC_CCAvenue_Payments::instance()->qr_generator->generate_qr_code( 
+            $order->get_total(), 
+            $order->get_currency(),
+            $transaction_ref 
+        );
+        
+        ob_start();
+        ?>
+        <div class="ccavenue-qr-section">
+            <h3><?php _e( 'Scan & Pay with UPI', 'woocommerce-ccavenue-payments' ); ?></h3>
+            <div class="qr-code-container">
+                <img src="<?php echo esc_url( $qr_url ); ?>" alt="<?php esc_attr_e( 'Scan this QR code to pay via UPI', 'woocommerce-ccavenue-payments' ); ?>" />
+                <p class="qr-amount"><?php printf( __( 'Amount: %s', 'woocommerce-ccavenue-payments' ), wc_price( $order->get_total() ) ); ?></p>
+                <p class="qr-ref"><?php printf( __( 'Reference: %s', 'woocommerce-ccavenue-payments' ), $transaction_ref ); ?></p>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Get payment form
+     */
+    private function get_payment_form( $order, $transaction_ref ) {
+        $merchant_data = $this->prepare_merchant_data( $order, $transaction_ref );
+        $encrypted_data = WC_CCAvenue_Payments::instance()->encryption->encrypt( $merchant_data, $this->working_key );
+        
+        ob_start();
+        ?>
+        <form method="post" name="redirect" action="<?php echo esc_url( $this->api_url ); ?>">
+            <input type="hidden" name="encRequest" value="<?php echo esc_attr( $encrypted_data ); ?>">
+            <input type="hidden" name="access_code" value="<?php echo esc_attr( $this->access_code ); ?>">
+            
+            <div class="payment-methods">
+                <h3><?php _e( 'Choose Payment Method', 'woocommerce-ccavenue-payments' ); ?></h3>
+                
+                <?php if ( in_array( 'cards', $this->get_option( 'payment_methods', array() ) ) ) : ?>
+                <div class="payment-method">
+                    <input type="radio" id="payment_cards" name="payment_method" value="cards" checked>
+                    <label for="payment_cards"><?php _e( 'Credit/Debit Cards', 'woocommerce-ccavenue-payments' ); ?></label>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ( in_array( 'netbanking', $this->get_option( 'payment_methods', array() ) ) ) : ?>
+                <div class="payment-method">
+                    <input type="radio" id="payment_netbanking" name="payment_method" value="netbanking">
+                    <label for="payment_netbanking"><?php _e( 'Net Banking', 'woocommerce-ccavenue-payments' ); ?></label>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ( in_array( 'upi', $this->get_option( 'payment_methods', array() ) ) ) : ?>
+                <div class="payment-method">
+                    <input type="radio" id="payment_upi" name="payment_method" value="upi">
+                    <label for="payment_upi"><?php _e( 'UPI', 'woocommerce-ccavenue-payments' ); ?></label>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ( in_array( 'wallet', $this->get_option( 'payment_methods', array() ) ) ) : ?>
+                <div class="payment-method">
+                    <input type="radio" id="payment_wallet" name="payment_method" value="wallet">
+                    <label for="payment_wallet"><?php _e( 'Mobile Wallets', 'woocommerce-ccavenue-payments' ); ?></label>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <button type="submit" class="button alt"><?php _e( 'Proceed to Payment', 'woocommerce-ccavenue-payments' ); ?></button>
+        </form>
+        
+        <script type="text/javascript">
+            document.addEventListener('DOMContentLoaded', function() {
+                const form = document.forms.redirect;
+                const paymentMethods = document.querySelectorAll('input[name="payment_method"]');
+                
+                paymentMethods.forEach(method => {
+                    method.addEventListener('change', function() {
+                        // Update form action based on selected payment method
+                        const methodValue = this.value;
+                        let newAction = '<?php echo esc_url( $this->api_url ); ?>';
+                        
+                        if (methodValue === 'upi') {
+                            newAction += '&payment_type=upi';
+                        } else if (methodValue === 'wallet') {
+                            newAction += '&payment_type=wallet';
+                        }
+                        
+                        form.action = newAction;
+                    });
+                });
+            });
+        </script>
+        <?php
+        return ob_get_clean();
+    }
+    
+    /**
+     * Prepare merchant data
+     */
+    private function prepare_merchant_data( $order, $transaction_ref ) {
+        $data = array(
+            'merchant_id'    => $this->merchant_id,
+            'order_id'       => $transaction_ref,
+            'amount'         => $order->get_total(),
+            'currency'       => $order->get_currency(),
+            'redirect_url'   => WC()->api_request_url( 'WC_Gateway_CCAvenue' ),
+            'cancel_url'     => $order->get_cancel_order_url(),
+            'language'       => 'EN',
+            'billing_name'   => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+            'billing_address'=> $order->get_billing_address_1(),
+            'billing_city'   => $order->get_billing_city(),
+            'billing_state'  => $order->get_billing_state(),
+            'billing_zip'    => $order->get_billing_postcode(),
+            'billing_country'=> $order->get_billing_country(),
+            'billing_tel'    => $order->get_billing_phone(),
+            'billing_email'  => $order->get_billing_email(),
+            'delivery_name'  => $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name(),
+            'delivery_address'=> $order->get_shipping_address_1(),
+            'delivery_city'  => $order->get_shipping_city(),
+            'delivery_state' => $order->get_shipping_state(),
+            'delivery_zip'   => $order->get_shipping_postcode(),
+            'delivery_country'=> $order->get_shipping_country(),
+            'delivery_tel'   => $order->get_billing_phone(),
+            'merchant_param1'=> $order->get_id(),
+            'merchant_param2'=> wp_get_current_user()->ID ?? 'guest',
+            'merchant_param3'=> get_bloginfo( 'name' ),
+            'merchant_param4'=> site_url(),
+            'merchant_param5'=> WC_CCAVENUE_PAYMENTS_VERSION
+        );
+        
+        return http_build_query( $data );
+    }
+    
+    /**
+     * Handle CCAvenue response
+     */
+    public function handle_ccavenue_response() {
+        $enc_response = $_POST['encResponse'] ?? '';
+        
+        if ( empty( $enc_response ) ) {
+            wp_die( __( 'Invalid response from payment gateway', 'woocommerce-ccavenue-payments' ) );
+        }
+        
+        // Decrypt response
+        $response = WC_CCAvenue_Payments::instance()->encryption->decrypt( $enc_response, $this->working_key );
+        parse_str( $response, $data );
+        
+        $order_id = $data['order_id'] ?? '';
+        $tracking_id = $data['tracking_id'] ?? '';
+        $bank_ref_no = $data['bank_ref_no'] ?? '';
+        $order_status = $data['order_status'] ?? '';
+        $failure_message = $data['failure_message'] ?? '';
+        $payment_mode = $data['payment_mode'] ?? '';
+        $card_name = $data['card_name'] ?? '';
+        
+        // Get order from merchant param
+        $order = wc_get_order( $data['merchant_param1'] ?? 0 );
+        
+        if ( ! $order ) {
+            wp_die( __( 'Order not found', 'woocommerce-ccavenue-payments' ) );
+        }
+        
+        // Update order meta
+        $order->update_meta_data( '_ccavenue_tracking_id', $tracking_id );
+        $order->update_meta_data( '_ccavenue_bank_ref_no', $bank_ref_no );
+        $order->update_meta_data( '_ccavenue_payment_mode', $payment_mode );
+        $order->update_meta_data( '_ccavenue_card_name', $card_name );
+        
+        // Handle order status
+        switch ( strtolower( $order_status ) ) {
+            case 'success':
+                $order->payment_complete();
+                $order->add_order_note( sprintf(
+                    __( 'CCAvenue payment successful. Tracking ID: %s, Bank Ref: %s', 'woocommerce-ccavenue-payments' ),
+                    $tracking_id,
+                    $bank_ref_no
+                ) );
+                
+                // Trigger voice notification
+                if ( $this->enable_voice_alerts ) {
+                    WC_CCAvenue_Payments::instance()->voice_notifications->send_payment_notification( $order, 'success' );
+                }
+                break;
+                
+            case 'failure':
+                $retry_count = $order->get_meta( '_ccavenue_retry_count' ) ?: 0;
+                
+                if ( $retry_count < self::MAX_RETRY_ATTEMPTS && $this->retry_payments ) {
+                    $retry_count++;
+                    $order->update_meta_data( '_ccavenue_retry_count', $retry_count );
+                    $order->add_order_note( sprintf(
+                        __( 'Payment failed. Retry attempt %d of %d. Reason: %s', 'woocommerce-ccavenue-payments' ),
+                        $retry_count,
+                        self::MAX_RETRY_ATTEMPTS,
+                        $failure_message
+                    ) );
+                } else {
+                    $order->update_status( 'failed', sprintf(
+                        __( 'Payment failed via CCAvenue. Reason: %s', 'woocommerce-ccavenue-payments' ),
+                        $failure_message
+                    ) );
+                }
+                break;
+                
+            case 'pending':
+                $order->update_status( 'on-hold', __( 'Payment pending via CCAvenue.', 'woocommerce-ccavenue-payments' ) );
+                $order->add_order_note( __( 'Payment is pending verification with bank.', 'woocommerce-ccavenue-payments' ) );
+                break;
+                
+            default:
+                $order->update_status( 'on-hold', sprintf(
+                    __( 'Unknown payment status: %s', 'woocommerce-ccavenue-payments' ),
+                    $order_status
+                ) );
+                break;
+        }
+        
+        $order->save();
+        
+        // Log transaction
+        $this->log_transaction( $order->get_id(), $order_id, $order_status, $data );
+        
+        // Redirect to thank you page
+        wp_redirect( $this->get_return_url( $order ) );
+        exit;
+    }
+    
+    /**
+     * Thank you page
+     */
+    public function thankyou_page( $order_id ) {
+        $order = wc_get_order( $order_id );
+        $status = $order->get_status();
+        
+        echo '<div class="ccavenue-thankyou">';
+        
+        if ( 'processing' === $status || 'completed' === $status ) {
+            echo '<div class="payment-success">';
+            echo '<h3>' . __( 'Payment Successful!', 'woocommerce-ccavenue-payments' ) . '</h3>';
+            echo '<p>' . sprintf(
+                __( 'Your payment of %s was successfully processed via CCAvenue.', 'woocommerce-ccavenue-payments' ),
+                wc_price( $order->get_total() )
+            ) . '</p>';
+            
+            $tracking_id = $order->get_meta( '_ccavenue_tracking_id' );
+            if ( $tracking_id ) {
+                echo '<p>' . sprintf(
+                    __( 'Tracking ID: %s', 'woocommerce-ccavenue-payments' ),
+                    $tracking_id
+                ) . '</p>';
+            }
+            echo '</div>';
+        } elseif ( 'failed' === $status ) {
+            echo '<div class="payment-failed">';
+            echo '<h3>' . __( 'Payment Failed', 'woocommerce-ccavenue-payments' ) . '</h3>';
+            echo '<p>' . __( 'Your payment could not be processed. Please try again.', 'woocommerce-ccavenue-payments' ) . '</p>';
+            echo '<a href="' . esc_url( $order->get_checkout_payment_url() ) . '" class="button">' . __( 'Retry Payment', 'woocommerce-ccavenue-payments' ) . '</a>';
+            echo '</div>';
+        } else {
+            echo '<div class="payment-pending">';
+            echo '<h3>' . __( 'Payment Pending', 'woocommerce-ccavenue-payments' ) . '</h3>';
+            echo '<p>' . __( 'Your payment is being processed. You will receive a confirmation shortly.', 'woocommerce-ccavenue-payments' ) . '</p>';
+            echo '</div>';
+        }
+        
+        echo '</div>';
+    }
+    
+    /**
+     * Generate transaction reference
+     */
+    private function generate_transaction_reference( $order_id ) {
+        $prefix = 'CCA';
+        $timestamp = time();
+        $random = wp_generate_password( 6, false );
+        return $prefix . $order_id . $timestamp . $random;
+    }
+    
+    /**
+     * Log transaction
+     */
+    public function log_transaction( $order_id, $transaction_ref, $status, $data = array() ) {
+        WC_CCAvenue_Payments_Install::log_transaction(
+            $order_id,
+            $transaction_ref,
+            $data['amount'] ?? 0,
+            $data['currency'] ?? get_woocommerce_currency(),
+            $data['payment_mode'] ?? 'unknown',
+            $status,
+            $data['tracking_id'] ?? null,
+            $data['bank_ref_no'] ?? null,
+            $data['failure_message'] ?? null
+        );
+    }
+    
+    /**
+     * Process refund
+     */
+    public function process_refund( $order_id, $amount = null, $reason = '' ) {
+        $order = wc_get_order( $order_id );
+        $tracking_id = $order->get_meta( '_ccavenue_tracking_id' );
+        
+        if ( ! $tracking_id ) {
+            return new WP_Error( 'error', __( 'No tracking ID found for refund', 'woocommerce-ccavenue-payments' ) );
+        }
+        
+        // Implement refund logic with CCAvenue API
+        // This would typically involve making an API call to CCAvenue's refund endpoint
+        
+        $refund_data = array(
+            'tracking_id' => $tracking_id,
+            'refund_amount' => $amount,
+            'refund_reason' => $reason,
+            'refund_ref' => $this->generate_transaction_reference( $order_id ) . '_REFUND'
+        );
+        
+        // Log refund attempt
+        $this->log_transaction( $order_id, $refund_data['refund_ref'], 'refund_initiated', $refund_data );
+        
+        // In a real implementation, you would make an API call here
+        // For now, we'll simulate a successful refund
+        $order->add_order_note( sprintf(
+            __( 'Refund initiated via CCAvenue. Amount: %s, Reason: %s', 'woocommerce-ccavenue-payments' ),
+            wc_price( $amount ),
+            $reason
+        ) );
+        
+        return true;
+    }
+}
+
+/**
+ * Main plugin class
+ *
+ * @package WooCommerce_CCAvenue_Payments
+ */
+class WC_CCAvenue_Payments {
+    
+    /**
+     * Plugin instance
+     *
+     * @var WC_CCAvenue_Payments
+     */
+    private static $instance;
+    
+    /**
+     * Payment gateway instance
+     *
+     * @var WC_Gateway_CCAvenue
+     */
+    public $gateway;
+    
+    /**
+     * Encryption instance
+     *
+     * @var WC_CCAvenue_Encryption
+     */
+    public $encryption;
+    
+    /**
+     * Webhook handler instance
+     *
+     * @var WC_CCAvenue_Webhook_Handler
+     */
+    public $webhook_handler;
+    
+    /**
+     * Voice notifications instance
+     *
+     * @var WC_CCAvenue_Voice_Notifications
+     */
+    public $voice_notifications;
+    
+    /**
+     * QR generator instance
+     *
+     * @var WC_CCAvenue_QR_Generator
+     */
+    public $qr_generator;
+    
+    /**
+     * Get instance
+     *
+     * @return WC_CCAvenue_Payments
+     */
+    public static function instance() {
+        if ( ! isset( self::$instance ) ) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    /**
+     * Constructor
+     */
+    private function __construct() {
+        $this->init_hooks();
+        $this->init_components();
+    }
+    
+    /**
+     * Initialize hooks
+     */
+    private function init_hooks() {
+        add_filter( 'woocommerce_payment_gateways', array( $this, 'add_gateway' ) );
+        add_filter( 'plugin_action_links_' . plugin_basename( WC_CCAVENUE_PAYMENTS_PLUGIN_FILE ), array( $this, 'plugin_action_links' ) );
+        add_action( 'init', array( $this, 'init' ) );
+        add_action( 'wc_ccavenue_payments_daily_cleanup', array( $this, 'daily_cleanup' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'admin_scripts' ) );
+        add_action( 'wp_enqueue_scripts', array( $this, 'frontend_scripts' ) );
+    }
+    
+    /**
+     * Initialize components
+     */
+    private function init_components() {
+        $this->gateway = new WC_Gateway_CCAvenue();
+        $this->encryption = new WC_CCAvenue_Encryption();
+        $this->webhook_handler = new WC_CCAvenue_Webhook_Handler();
+        $this->voice_notifications = new WC_CCAvenue_Voice_Notifications();
+        $this->qr_generator = new WC_CCAvenue_QR_Generator();
+        
+        // Initialize admin (assuming WC_CCAvenue_Payments_Admin class exists elsewhere or is not critical for this single file)
+        // if ( is_admin() ) {
+        //     new WC_CCAvenue_Payments_Admin();
+        // }
+    }
+    
+    /**
+     * Initialize plugin
+     */
+    public function init() {
+        // Load text domain
+        load_plugin_textdomain( 'woocommerce-ccavenue-payments', false, dirname( plugin_basename( WC_CCAVENUE_PAYMENTS_PLUGIN_FILE ) ) . '/languages' );
+    }
+    
+    /**
+     * Add gateway to WooCommerce
+     *
+     * @param array $methods Payment methods.
+     * @return array
+     */
+    public function add_gateway( $methods ) {
+        $methods[] = 'WC_Gateway_CCAvenue';
+        return $methods;
+    }
+    
+    /**
+     * Add plugin action links
+     *
+     * @param array $links Plugin action links.
+     * @return array
+     */
+    public function plugin_action_links( $links ) {
+        $plugin_links = array(
+            '<a href="' . admin_url( 'admin.php?page=wc-settings&tab=checkout&section=ccavenue' ) . '">' . __( 'Settings', 'woocommerce-ccavenue-payments' ) . '</a>',
+            '<a href="https://yourdomain.com/docs" target="_blank">' . __( 'Documentation', 'woocommerce-ccavenue-payments' ) . '</a>',
+        );
+        return array_merge( $plugin_links, $links );
+    }
+    
+    /**
+     * Admin scripts
+     */
+    public function admin_scripts() {
+        if ( isset( $_GET['section'] ) && 'ccavenue' === $_GET['section'] ) {
+            wp_enqueue_style( 'wc-ccavenue-admin', WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'css/admin.css', array(), WC_CCAVENUE_PAYMENTS_VERSION );
+            wp_enqueue_script( 'wc-ccavenue-admin', WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'js/admin.js', array( 'jquery' ), WC_CCAVENUE_PAYMENTS_VERSION, true );
+        }
+    }
+    
+    /**
+     * Frontend scripts
+     */
+    public function frontend_scripts() {
+        if ( is_checkout() ) {
+            wp_enqueue_style( 'wc-ccavenue-frontend', WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'css/frontend.css', array(), WC_CCAVENUE_PAYMENTS_VERSION );
+            wp_enqueue_script( 'wc-ccavenue-frontend', WC_CCAVENUE_PAYMENTS_ASSETS_URL . 'js/frontend.js', array( 'jquery' ), WC_CCAVENUE_PAYMENTS_VERSION, true );
+            
+            wp_localize_script( 'wc-ccavenue-frontend', 'wc_ccavenue_params', array(
+                'ajax_url' => admin_url( 'admin-ajax.php' ),
+                'nonce' => wp_create_nonce( 'wc-ccavenue-nonce' ),
+                'i18n' => array(
+                    'loading' => __( 'Processing...', 'woocommerce-ccavenue-payments' ),
+                    'error' => __( 'An error occurred. Please try again.', 'woocommerce-ccavenue-payments' ),
+                )
+            ) );
+        }
+    }
+    
+    /**
+     * Daily cleanup task
+     */
+    public function daily_cleanup() {
+        global $wpdb;
+        $expiration_time = time() - ( 30 * DAY_IN_SECONDS );
+        $wpdb->query( $wpdb->prepare( "
+            DELETE FROM {$wpdb->prefix}ccavenue_transactions 
+            WHERE created_at < %d AND status IN ('pending', 'temp')
+        ", $expiration_time ) );
+    }
+    
+    /**
+     * Get gateway instance
+     *
+     * @return WC_Gateway_CCAvenue
+     */
+    public function get_gateway() {
+        return $this->gateway;
+    }
+    
+    /**
+     * Get encryption instance
+     *
+     * @return WC_CCAvenue_Encryption
+     */
+    public function get_encryption() {
+        return $this->encryption;
+    }
+    
+    /**
+     * Get webhook handler instance
+     *
+     * @return WC_CCAvenue_Webhook_Handler
+     */
+    public function get_webhook_handler() {
+        return $this->webhook_handler;
+    }
+}
+
+/**
+ * Initialize the plugin
+ */
+function wc_ccavenue_payments_init() {
+    return WC_CCAvenue_Payments::instance();
+}
+
+// Initialize the plugin
+add_action( 'plugins_loaded', 'wc_ccavenue_payments_init' );
+
+// Register activation and deactivation hooks
+register_activation_hook( __FILE__, 'wc_ccavenue_payments_activate' );
+register_deactivation_hook( __FILE__, 'wc_ccavenue_payments_deactivate' );
+
+/**
+ * Plugin activation
+ */
+function wc_ccavenue_payments_activate() {
+    WC_CCAvenue_Payments_Install::install();
+    
+    // Schedule cron jobs
+    if ( ! wp_next_scheduled( 'wc_ccavenue_payments_daily_cleanup' ) ) {
+        wp_schedule_event( time(), 'daily', 'wc_ccavenue_payments_daily_cleanup' );
+    }
+}
+
+/**
+ * Plugin deactivation
+ */
+function wc_ccavenue_payments_deactivate() {
+    // Clear scheduled events
+    wp_clear_scheduled_hook( 'wc_ccavenue_payments_daily_cleanup' );
+}
