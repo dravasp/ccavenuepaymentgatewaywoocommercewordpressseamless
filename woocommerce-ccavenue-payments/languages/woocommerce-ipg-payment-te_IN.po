@@ -1,0 +1,92 @@
+# Telugu translation for WooCommerce IPG Payment Plugin
+# Copyright (C) 2024 WooCommerce IPG Payment
+# This file is distributed under the same license as the WooCommerce IPG Payment package.
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce IPG Payment 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-15 12:00+0000\n"
+"PO-Revision-Date: 2024-01-15 12:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Telugu\n"
+"Language: te_IN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: includes/class-wc-ipg-payment-gateway.php:45
+msgid "IPG Payment Gateway"
+msgstr "IPG చెల్లింపు గేట్వే"
+
+#: includes/class-wc-ipg-payment-gateway.php:67
+msgid "Enable IPG Payment"
+msgstr "IPG చెల్లింపును ప్రారంభించండి"
+
+#: includes/class-wc-ipg-payment-gateway.php:72
+msgid "Title"
+msgstr "శీర్షిక"
+
+#: includes/class-wc-ipg-payment-gateway.php:74
+msgid "This controls the title which the user sees during checkout."
+msgstr "ఇది వినియోగదారు చెల్లింపు సమయంలో చూసే శీర్షికను నియంత్రిస్తుంది."
+
+#: includes/class-wc-ipg-payment-gateway.php:78
+msgid "Description"
+msgstr "వివరణ"
+
+#: includes/class-wc-ipg-payment-gateway.php:80
+msgid "Payment method description that the customer will see on your checkout."
+msgstr "మీ చెల్లింపులో కస్టమర్ చూసే చెల్లింపు పద్ధతి యొక్క వివరణ."
+
+#: includes/class-wc-ipg-payment-gateway.php:89
+msgid "Merchant ID"
+msgstr "వాణిజ్య ID"
+
+#: includes/class-wc-ipg-payment-gateway.php:94
+msgid "API Key"
+msgstr "API కీ"
+
+#: includes/class-wc-ipg-payment-gateway.php:99
+msgid "Test Mode"
+msgstr "పరీక్షా మోడ్"
+
+#: includes/class-wc-ipg-payment-gateway.php:101
+msgid "Enable test mode"
+msgstr "పరీక్షా మోడ్ ప్రారంభించండి"
+
+#: templates/payment-form.php:15
+msgid "Card Number"
+msgstr "కార్డ్ సంఖ్య"
+
+#: templates/payment-form.php:20
+msgid "Expiry Date"
+msgstr "గడువు తేదీ"
+
+#: templates/payment-form.php:25
+msgid "CVV"
+msgstr "CVV"
+
+#: templates/payment-form.php:30
+msgid "Card Holder Name"
+msgstr "కార్డ్ హోల్డర్ పేరు"
+
+#: includes/class-wc-ipg-payment-gateway.php:120
+msgid "Pay with IPG"
+msgstr "IPG తో చెల్లించండి"
+
+#: includes/class-wc-ipg-payment-gateway.php:145
+msgid "Payment successful. Thank you for your order."
+msgstr "చెల్లింపు విజయవంతం. మీ ఆర్డర్ కు ధన్యవాదాలు."
+
+#: includes/class-wc-ipg-payment-gateway.php:150
+msgid "Payment failed. Please try again."
+msgstr "చెల్లింపు విఫలమైంది. దయచేసి మళ్లీ ప్రయత్నించండి."
+
+#: includes/class-wc-ipg-payment-gateway.php:155
+msgid "Transaction processing. Please wait for confirmation."
+msgstr "లావాదేవీ ప్రాసెస్ అవుతోంది. దయచేసి నిర్ధారణ కోసం వేచి ఉండండి."
+
+#: includes/class-wc-ipg-payment-gateway.php:160
+msgid "Invalid payment details. Please check your information."
+msgstr "చెల్లింపు వివరాలు చెల్లుబాటు కావు. దయచేసి మీ సమాచారాన్ని తనిఖీ చేయండి."
