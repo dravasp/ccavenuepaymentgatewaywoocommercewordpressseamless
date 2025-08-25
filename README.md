@@ -1,6 +1,6 @@
 ![CCAvenue Brand Trusted by Merchants](https://github.com/user-attachments/assets/a25a1f2b-9e1a-44be-81a0-062bcf0dc76b)
 _________________________________________________________________________________________
-![CCAvenue Infibeam Avenues Ltd. Internet Payment Gateway Module for Magento 2.4x optimised for aws Bitnami - Partner Affiliate Marketing - WE SKY PRINT LLP](https://github.com/dravasp/ccavenuepaymentgatewaymagentoseamless/assets/27689043/020044ee-e213-4f1c-b1b0-6e63ad1c9288)&emsp;<a href="https://apps.apple.com/in/app/ccavenue-india-for-business/id1607808934?itscg=30200&amp;itsct=apps_box_appicon" style="width: 7%; height: 7%; border-radius: 3%; overflow: hidden; display: inline-block; vertical-align: middle;"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple126/v4/80/af/c6/80afc674-115e-33e1-12e9-345f13112f2f/AppIcon-0-0-1x_U007emarketing-0-7-0-sRGB-85-220.png/540x540bb.jpg" alt="CCAvenue India for Business" style="width: 7%; height: 7%; border-radius: 3%; overflow: hidden; display: inline-block; vertical-align: middle;"></a>&emsp;<img src="https://pbs.twimg.com/profile_images/1789943330295427072/lv7whBjj_400x400.jpg" style="width: 7%; height: 7%; border-radius: 3%; overflow: hidden; display: inline-block; vertical-align: middle;"> &emsp; <img src="https://upload.wikimedia.org/wikipedia/commons/archive/9/9e/20220314171849%21Ia-infibeam-avenues.png" alt="Infibeam logo" height="70" width="200"></a>
+![CCAvenue Infibeam Avenues Ltd. Internet Payment Gateway Module for WooCommerce optimised for aws Bitnami - Partner Affiliate Marketing - WE SKY PRINT LLP](https://github.com/dravasp/ccavenuepaymentgatewaymagentoseamless/assets/27689043/020044ee-e213-4f1c-b1b0-6e63ad1c9288)&emsp;<a href="https://apps.apple.com/in/app/ccavenue-india-for-business/id1607808934?itscg=30200&amp;itsct=apps_box_appicon" style="width: 7%; height: 7%; border-radius: 3%; overflow: hidden; display: inline-block; vertical-align: middle;"><img src="https://is1-ssl.mzstatic.com/image/thumb/Purple126/v4/80/af/c6/80afc674-115e-33e1-12e9-345f13112f2f/AppIcon-0-0-1x_U007emarketing-0-7-0-sRGB-85-220.png/540x540bb.jpg" alt="CCAvenue India for Business" style="width: 7%; height: 7%; border-radius: 3%; overflow: hidden; display: inline-block; vertical-align: middle;"></a>&emsp;<img src="https://pbs.twimg.com/profile_images/1789943330295427072/lv7whBjj_400x400.jpg" style="width: 7%; height: 7%; border-radius: 3%; overflow: hidden; display: inline-block; vertical-align: middle;"> &emsp; <img src="https://upload.wikimedia.org/wikipedia/commons/archive/9/9e/20220314171849%21Ia-infibeam-avenues.png" alt="Infibeam logo" height="70" width="200"></a>
 
 [![GitHub issues](https://img.shields.io/github/issues/dravasp/ccavenuepaymentgatewaymagentoseamless?logo=github&style=flat-square)](https://github.com/dravasp/ccavenuepaymentgatewaymagentoseamless/issues)
 [![GitHub forks](https://img.shields.io/github/forks/dravasp/ccavenuepaymentgatewaymagentoseamless?logo=github&style=flat-square)](https://github.com/dravasp/ccavenuepaymentgatewaymagentoseamless/network)
@@ -84,7 +84,7 @@ Market challenges today are `unidentified entity with no earmark that quite sadl
 
 ## Merchant Registration
 - Register with CCAvenue Merchant Desk to gain benefits from value-added service providers.
-- Complete merchant onboarding requisites by entering and saving `Merchant ID`, `Access Code`, and `Encryption Key` in Magento Admin.
+- Complete merchant onboarding requisites by entering and saving `Merchant ID`, `Access Code`, and `Encryption Key` in WooCommerce Admin.
 _________________________________________________________________________________________
 - Sign up at `https://www.ccavenue.com` to accept, track, and manage payments-on-the-go with strong business insights leveraged across `CCAvenue Merchant Desk`
   and `Value Added Service Providers`. Offer your valued customers - `discounts across any supply chain and gain that competitive edge over your pre-decessors`.
@@ -294,9 +294,9 @@ Secret: `your-secret-key`
 Delivery Method: `POST`
 SAVE the Webhook.
 
-3. Magento OS 2.4.8 Webhook Setup
+3. Webhook Setup
 
-Log in to Magento Admin.
+Log in to WooCommerce WordPress Admin.
 Navigate to: Stores > Configuration > Services > Webhooks
 
 Add Webhook:
