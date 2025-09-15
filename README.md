@@ -1184,7 +1184,7 @@ Dispute Collection Officer Information Report
 _________________________________________________________________________________________
 ## Future Updates
 - Subscribe to future updates for ongoing support and information.
-[Subscribe to future updates to this repo by click here](https://github.com/dravasp/ccavenuepaymentgatewaymagentoseamless/commits.atom) - View .atom RSS file to import to Thunderbird
+[Subscribe to future updates to this repo by click here](https://github.com/dravasp/ccavenuepaymentgatewaywoocommercewordpressseamless/commits.atom) - View .atom RSS file to import to Thunderbird
 _________________________________________________________________________________________
 [Navigate to Top](#introduction)
 
